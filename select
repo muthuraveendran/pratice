@@ -1,0 +1,282 @@
+/** globals TestUtil */
+
+const _ = require('lodash');
+
+const {TIME_WAIT} = require('./_constant');
+
+const {FormUtil} = require('./form');
+const {DOMUtil}  = require('./dom');
+
+class SelectUtil {
+
+	/**
+	 * @param menu
+	 * @param indexes
+	 * @param values
+	 * @param search
+	 * @returns {*|Promise}
+	 * @description
+	 * Helper function to perform operations on md-select.
+	 * Subordinate: doSelect()
+	 */
+	static _doMdSelect(menu, indexes, values, search){
+		return browser.wait(async () =>{
+
+			await DOMUtil.waitFor(menu);
+
+			await menu.click();
+			const [menuId, isMultiple] = await Promise.all([menu.getAttribute('aria-owns'), menu.getAttribute('aria-multiselectable')]);
+
+			const mdContent = `#${menuId} > md-select-menu > md-content`;
+
+			for(let index of (indexes || [])){
+				await element(by.css(`${mdContent} > md-option:nth-of-type(${index})`)).click();
+			}
+
+			for(let value of (values || [])){
+				await element(by.css(`${mdContent} > md-option[value="${value}"]`)).click();
+			}
+
+			if(search){
+				await element(by.css(`#${menuId} > md-select-header > input`)).sendKeys(search);
+				await element(by.css(`${mdContent} > md-option:nth-of-type(1)`)).click();
+			}
+
+			if(isMultiple === 'true'){ // Close the menu if it is multi select
+				await element(by.css(`${mdContent} > md-option:nth-of-type(1)`)).sendKeys(protractor.Key.ESCAPE);
+			}
+			return true;
+		}, TIME_WAIT);
+	}
+
+	static _getMdSelectVals(menu, value){
+		return browser.wait(async () =>{
+			await menu.click();
+			const [menuId, isMultiple] = await Promise.all([menu.getAttribute('aria-owns'), menu.getAttribute('aria-multiselectable')]);
+			const mdContent            = `#${menuId} > md-select-menu > md-content`;
+			let options                = await element.all(by.css(`${mdContent} md-option`));
+			const val                  = [];
+			for(let i in (options || [])){
+				let index      = parseInt(i) + 1;
+				const selected = await element(by.css(`${mdContent} md-option:nth-of-type(${index})`)).getAttribute('aria-selected');
+				if(selected === 'true'){
+					val.push(parseInt(await element(by.css(`${mdContent} md-option:nth-of-type(${index})`)).getAttribute('value')));
+					await element(by.css(`${mdContent} md-option:nth-of-type(${index})`)).click();
+					if(isMultiple === 'false'){
+						break;
+					}
+				}
+			}
+			if(isMultiple === 'true'){ // Close the menu if it is multi select
+				await element(by.css(`${mdContent} > md-option:nth-of-type(1)`)).sendKeys(protractor.Key.ESCAPE);
+			}
+			return (!_.difference(val, value).length) && (!_.difference(value, val).length);
+		}, TIME_WAIT);
+	}
+
+	/**
+	 * @param menu
+	 * @returns {*}
+	 * @description
+	 * ev-select: Returns an array of selected indexes
+	 */
+	static _getSelected(menu){
+		return browser.executeAsyncScript(() =>{
+			TestUtil.UI.Select.getSelected(arguments[0], arguments[1]);
+		}, menu);
+	}
+
+	/**
+	 * @param menu - md-select element
+	 * @returns {*}
+	 * @description
+	 * Clears ev-select of the selected value(s).
+	 */
+	static clear(menu){
+		return browser.executeAsyncScript(() =>{
+			TestUtil.UI.Select.clear(arguments[0], arguments[1]);
+		}, menu);
+	}
+
+	static clearMdSelect(menu){
+		return browser.wait(async () =>{
+			await menu.click();
+			const [menuId, isMultiple] = await Promise.all([menu.getAttribute('aria-owns'), menu.getAttribute('aria-multiselectable')]);
+			const mdContent            = `#${menuId} > md-select-menu > md-content`;
+			let options                = await element.all(by.css(`${mdContent} md-option`));
+
+			for(let i in (options || [])){
+				let index      = parseInt(i) + 1;
+				const selected = await element(by.css(`${mdContent} md-option:nth-of-type(${index})`)).getAttribute('aria-selected');
+				if(selected === 'true'){
+					await element(by.css(`${mdContent} md-option:nth-of-type(${index})`)).click();
+				}
+			}
+
+			await element(by.css(`${mdContent} > md-option:nth-of-type(1)`)).sendKeys(protractor.Key.ESCAPE);
+
+			return true;
+		}, TIME_WAIT);
+	}
+
+	static doAdd(menu, search){
+		return browser.wait(async () =>{
+
+			await menu.click();
+			const menuId = await menu.getAttribute('aria-owns');
+
+			const mdContent = `#${menuId} > md-select-menu > md-content`;
+			let msg         = true;
+			if(search){
+				await element(by.css(`#${menuId} > md-select-header > input`)).sendKeys(search);
+				const isPresent = await element(by.css(`${mdContent} > .no-records span`)).isPresent();
+				if(isPresent){
+					await element(by.css(`${mdContent} > .no-records > .add-record`)).click();
+				}
+			}
+			return msg;
+		}, TIME_WAIT);
+	}
+
+	/**
+	 *
+	 * @param input
+	 * @param value
+	 * @param index
+	 * @returns {Promise<void>}
+	 * @description
+	 * Helper function to perform md-autoComplete operation
+	 */
+	static async doAutoComplete(input, value, index){
+
+		await input.sendKeys(value);
+		if(index){
+			let options = element(by.css(`body > md-virtual-repeat-container > div > div.md-virtual-repeat-offsetter .ev-search > li:nth-of-type(${index})`));
+			await options.click();
+		}
+	}
+
+	/**
+	 * @param menu - md-select element.
+	 * @param indexes - array of indexes to be selected.
+	 * @param values - array of options to be selected based on option values.
+	 * @param search - select one option based the search text.
+	 * @returns {promise.Promise<any> | promise.Promise<T>}
+	 * @description
+	 * Helper function to perform operations on ev-select.
+	 */
+	static doSelect(menu, indexes, values, search){
+		if(`${menu.elementArrayFinder_.locator().value}`.includes('ev-select')){
+			return browser.executeAsyncScript(() => TestUtil.UI.Select.doSelect(arguments[0], arguments[1], arguments[2], arguments[3], arguments[4]), menu, indexes, values, search);
+		}
+		return this._doMdSelect(menu, indexes, values, search);
+	}
+
+	//TODO @sathyaraj What is the purpose of this function? SelectAll matching the search?
+	static doSelectSearchChecked(menu, search, remove){
+		return browser.wait(async () =>{
+
+			await menu.click();
+			const menuId = await menu.getAttribute('aria-owns');
+
+			const mdContent = `#${menuId} > md-select-menu > md-content`;
+			let msg         = null;
+			if(search){
+				await element(by.css(`#${menuId} > md-select-header > input`)).sendKeys(search);
+				const isPresent = await element(by.css(`${mdContent} > .no-records span`)).isPresent();
+				if(isPresent){
+					msg = await element(by.css(`${mdContent} > .no-records span`)).getText();
+				} else{
+					await element(by.css(`#${menuId} > md-select-header > md-checkbox`)).click();
+					msg = await FormUtil.getChecked(element(by.css(`#${menuId} > md-select-header > md-checkbox`)));
+				}
+				await element(by.css(`#${menuId} > md-select-header > input`)).sendKeys(protractor.Key.ESCAPE);
+			} else if(remove){
+				await element(by.css(`#${menuId} > md-select-header > input`)).sendKeys(remove);
+				msg = await element(by.css(`div.md-text > span.ev-opt-action.icon-cancel`)).isPresent();
+				if(msg){
+					await element(by.css(`div.md-text > span.ev-opt-action.icon-cancel`)).click();
+				}
+			}
+			return msg;
+		}, TIME_WAIT);
+	}
+
+	/**
+	 * @param menu
+	 * @param search
+	 * @returns {*}
+	 * @description
+	 * Searches for the given option. If found returns the option text otherwise 'Not found'.
+	 */
+	static hasOption(menu, search){
+		return browser.wait(async () =>{
+
+			await menu.click();
+			const menuId = await menu.getAttribute('aria-owns');
+
+			const mdContent = `#${menuId} > md-select-menu > md-content`;
+			let msg         = true;
+			if(search){
+				await element(by.css(`#${menuId} > md-select-header > input`)).sendKeys(search);
+				const isPresent = await element(by.css(`${mdContent} > .no-records span`)).isPresent();
+				if(isPresent){
+					msg = await element(by.css(`${mdContent} > .no-records span`)).getText();
+				} else{
+					msg = await element(by.css(`${mdContent} md-option:nth-of-type(1) .md-text span`)).getText();
+				}
+				await element(by.css(`#${menuId} > md-select-header > input`)).sendKeys(protractor.Key.ESCAPE);
+			}
+			return msg;
+		}, TIME_WAIT);
+	}
+
+	static isDisabled(menu, search, checked, disabled, height){
+		return browser.wait(async () =>{
+
+			await menu.click();
+			const menuId = await menu.getAttribute('aria-owns');
+
+			const mdContent = `#${menuId} > md-select-menu > md-content`;
+			let msg         = false;
+			if(search){
+				await element(by.css(`#${menuId} > md-select-header > input`)).sendKeys(search);
+				const isPresent = await element(by.css(`${mdContent} > .no-records span`)).isPresent();
+				if(!isPresent){
+					if(checked){
+						msg = !!(await element(by.css(`${mdContent} md-option:nth-of-type(1)`)).getAttribute('aria-selected'));
+					} else if(disabled){
+						msg = !!(await element(by.css(`${mdContent} md-option:nth-of-type(1)`)).getAttribute('disabled'));
+					} else if(!disabled){
+						msg = !!(await element(by.css(`${mdContent} md-option:nth-of-type(1)`)).getAttribute('aria-disabled'));
+					}
+				}
+			} else if(height){
+				const height = await element(by.css(`#${menuId} > md-select-menu > md-content > md-virtual-repeat-container > div > div.md-virtual-repeat-sizer`)).getAttribute('style');
+				const split  = height.split(':');
+				msg          = parseInt(split[1].replace('px;', ''));
+			}
+			await element(by.css(`#${menuId} > md-select-header > input`)).sendKeys(protractor.Key.ESCAPE);
+			return msg;
+		}, TIME_WAIT);
+	}
+
+	/**
+	 * @param element
+	 * @param value
+	 * @param [type] - ['select', 'mdSelect']. Defaults to 'select'.
+	 * @returns {*}
+	 * @description
+	 * Check if the element has the given value
+	 */
+	static async isEqual(element, value, type){
+		if(type === 'mdSelect'){
+			return this._getMdSelectVals(element, value);
+		} else{
+			const vals = await this._getSelected(element);
+			return (!_.difference(vals, value).length) && (!_.difference(value, vals).length);
+		}
+	}
+}
+
+module.exports = {SelectUtil};
